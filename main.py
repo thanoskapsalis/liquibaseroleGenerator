@@ -39,7 +39,7 @@ if __name__ == '__main__':
     changeset = args.revision + "-" + "add-new-rollback-tag"
 
     # Tag databaseChangeLog with the revision
-    tag_database_changeset = create_change_set(root, changeset, "bob", args.dbDriver)
+    tag_database_changeset = create_change_set(root, changeset, "intrasoft", args.dbDriver)
     rollbackTag = args.revision + "-" + "add-rollback-tag"
     tag_database_changeset.append(ET.Element("tagDatabase", tag=rollbackTag))
     print("Tagged databaseChangeLog with " + rollbackTag)
@@ -47,34 +47,45 @@ if __name__ == '__main__':
 
     # Create the role change set
     changeset = args.revision + "-" + "1"
-    role_create_change_set = create_change_set(root, changeset, "bob", args.dbDriver)
+    role_create_change_set = create_change_set(root, changeset, "intrasoft", args.dbDriver)
     role_values = {"role_name": args.roleName, "internal": "true"}
-    roleInsetStatement = ET.SubElement(role_create_change_set, "insert", tableName="br_roles", catalogName="public", schemaName="public")
+    roleInsetStatement = ET.SubElement(role_create_change_set, "insert", tableName="br_roles", catalogName="public",
+                                       schemaName="public")
     for key, value in role_values.items():
         roleInsetStatement.append(create_column(key, value=value))
     print("Created role " + args.roleName)
-    ET.Comment("").tail = "\n"
-
 
     # Create the rights change set
     changeset = args.revision + "-" + "2"
-    rights_create_change_set = create_change_set(root, changeset, "bob", args.dbDriver)
+    rights_create_change_set = create_change_set(root, changeset, "intrasoft", args.dbDriver)
     with open(args.rightsFile, 'r') as file:
-        rights = [right.strip() for right in file.read().split(' ')]
+        rights = [right.strip() for right in file.read().split('\n')]
 
     for right in rights:
-        rightInsertStatement = ET.SubElement(rights_create_change_set, "insert", tableName="br_rights", catalogName="public", schemaName="public")
+        rightInsertStatement = ET.SubElement(rights_create_change_set, "insert", tableName="br_rights",
+                                             catalogName="public", schemaName="public")
         rightInsertStatement.append(create_column("rights_type", value=right))
         rightInsertStatement.append(create_column("valid_from", value="1900-01-21"))
         rightInsertStatement.append(create_column("roleId",
                                                   valueComputed="(select id FROM br_roles WHERE role_name = '" + args.roleName + "')"))
         rights_create_change_set.append(rightInsertStatement)
-        ET.Comment("").tail = "\n"
 
-    print("Created rights for " + args.roleName)
+    # Create the deletion script
+    rollbackChangeSet = create_change_set(root, args.revision + "-3-rollback-1", "intrasoft", args.dbDriver)
+    rollback = ET.SubElement(rollbackChangeSet, "rollback")
 
+    deleteRole = ET.SubElement(rollback, "delete", tableName="br_roles")
+    whereRole = ET.SubElement(deleteRole, "where")
+    whereRole.text = "role_id = (SELECT id FROM br_roles WHERE role_name = '" + args.roleName + "')"
+
+    deleteRights = ET.SubElement(rollback, "delete", tableName="br_rights")
+    whereRights = ET.SubElement(deleteRights, "where")
+    whereRights.text = "role_name = '" + args.roleName + "'"
+    print("Created deletion script for role " + args.roleName)
+
+    fileName = args.roleName + ".xml"
     # Write the XML to a file
-    with open("output.xml", "wb") as file:
+    with open(fileName, "wb") as file:
         tree = ET.ElementTree(root)
         tree.write(file, encoding='utf-8', xml_declaration=True)
-    print("Wrote output to output.xml")
+    print("Wrote output to " + fileName + ".")
